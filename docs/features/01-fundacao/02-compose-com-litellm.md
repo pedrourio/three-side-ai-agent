@@ -1,12 +1,13 @@
-# Tarefa 01-02 — Compose com LiteLLM respondendo
+# Tarefa 01-02 — Compose com Postgres e LiteLLM respondendo
 
 **Épico:** [01 — Fundação](EPICO.md)
 **Spec:** §4 (arquitetura), §13 (riscos de cota)
-**ADRs:** [0005](../../adr/0005-litellm-como-gateway-multi-provedor.md)
+**ADRs:** [0005](../../adr/0005-litellm-como-gateway-multi-provedor.md),
+[0009](../../adr/0009-postgres-como-banco-da-sessao.md)
 
-**Entregável verificável:** `make up` sobe `api` e `litellm`; `make ping` obtém
-uma resposta de um modelo gratuito real através do proxy, sem que o código
-saiba qual provedor atendeu.
+**Entregável verificável:** `make up` sobe `postgres`, `litellm` e `api`, nessa
+ordem de dependência; `make ping` obtém uma resposta de um modelo gratuito real
+através do proxy, sem que o código saiba qual provedor atendeu.
 
 ## Contexto para quem implementa
 
@@ -35,7 +36,7 @@ código conhece.
 - Consome: o esqueleto e os alvos de `make` da tarefa 01-01.
 - Produz:
   - variáveis `LLM_BASE_URL` (default `http://litellm:4000`), `LLM_MODEL`
-    (default `primary-agent`), `LLM_API_KEY`;
+    (default `primary-agent`), `LLM_API_KEY`, `DATABASE_URL`;
   - endpoint `GET /health` retornando `{"status": "ok"}`;
   - `scripts/ping_model.py`, usado só por humano, nunca por teste.
 
@@ -44,7 +45,7 @@ código conhece.
 - [ ] **Passo 1: adicionar as dependências**
 
 ```bash
-uv add fastapi "uvicorn[standard]" openai
+uv add fastapi "uvicorn[standard]" openai "psycopg[binary]"
 ```
 
 - [ ] **Passo 2: escrever o teste do healthcheck, que deve falhar**
@@ -152,12 +153,36 @@ OPENROUTER_API_KEY=
 
 # chave que a api usa para falar com o proxy local; qualquer string
 LITELLM_MASTER_KEY=sk-local-dev
+
+# banco local; o mesmo valor é usado pelo make test-db
+POSTGRES_USER=agent
+POSTGRES_PASSWORD=agent
+POSTGRES_DB=agent
+DATABASE_URL=postgresql://agent:agent@localhost:5432/agent
 ```
 
-`compose.yaml`:
+`compose.yaml`. Note o `DATABASE_URL` da `api` apontando para o host
+`postgres`, e o do `.env` apontando para `localhost` — o primeiro é de dentro da
+rede do Compose, o segundo é para você e para o `make test-db`.
 
 ```yaml
 services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports:
+      - "5432:5432"
+    volumes:
+      - agent-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
   litellm:
     image: ghcr.io/berriai/litellm:main-latest
     command: ["--config", "/app/config.yaml", "--port", "4000"]
@@ -182,15 +207,16 @@ services:
       LLM_BASE_URL: http://litellm:4000
       LLM_MODEL: primary-agent
       LLM_API_KEY: ${LITELLM_MASTER_KEY}
-      DATABASE_PATH: /app/data/sessions.sqlite
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
     volumes:
       - ./src:/app/src
       - ./scenarios:/app/scenarios
-      - agent-data:/app/data
     ports:
       - "8000:8000"
     depends_on:
       litellm:
+        condition: service_healthy
+      postgres:
         condition: service_healthy
 
 volumes:
@@ -245,8 +271,10 @@ ping:  ## confere que o proxy responde com um modelo real
 ```bash
 cp .env.example .env   # preencha ao menos uma chave gratuita
 make up
+docker compose ps               # postgres e litellm healthy, api up
 curl -s localhost:8000/health   # {"status":"ok"}
 make ping                       # pong + qual provedor atendeu
+psql "$DATABASE_URL" -c 'select 1'   # o banco aceita conexão de fora do Compose
 ```
 
 Se o `ping` falhar, `make logs` mostra qual provedor recusou e por quê. Testar o
@@ -262,7 +290,10 @@ git commit -m "feat: compose com api e gateway litellm multi-provedor"
 
 ## Pronto quando
 
-- `make up` sobe os dois serviços e `curl localhost:8000/health` responde.
+- `make up` sobe os três serviços; `postgres` e `litellm` ficam `healthy` antes
+  de a `api` subir, e `curl localhost:8000/health` responde.
+- `DATABASE_URL` do `.env` conecta de fora do Compose — é o que o `make test-db`
+  vai usar na tarefa 02-07.
 - `make ping` imprime a resposta de um modelo real e o nome do provedor.
 - Derrubar o primeiro provedor (apagando sua chave) faz o segundo atender, sem
   mudança de código.

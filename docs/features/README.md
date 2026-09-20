@@ -45,7 +45,9 @@ Valem para toda tarefa, sem repetição em cada arquivo.
 - **`src/core/` não importa `src/api/`, `fastapi` nem `uvicorn`.** Verificado por
   `make lint`, não por disciplina.
 - **`make test` roda sem rede e sem chave de API**, em segundos. Teste que
-  precise de LLM real vive marcado com `@pytest.mark.live` e fora do `make test`.
+  precise de LLM real vive marcado `@pytest.mark.live`; teste que precise de
+  Postgres vive marcado `@pytest.mark.db` e roda por `make test-db`. Nenhum dos
+  dois entra no `make test`.
 - **Nenhum tipo TypeScript escrito à mão** para contratos do backend: são
   gerados por `make types`.
 - **Decisão arquitetural vira ADR antes do código.**

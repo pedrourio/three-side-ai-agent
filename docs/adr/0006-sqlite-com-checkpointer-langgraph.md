@@ -1,6 +1,6 @@
 # ADR 0006 — SQLite em volume com o checkpointer do LangGraph
 
-- Status: aceito
+- Status: superado por [0009](0009-postgres-como-banco-da-sessao.md)
 - Data: 2026-09-19
 
 ## Contexto

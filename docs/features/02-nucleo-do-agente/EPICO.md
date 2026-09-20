@@ -18,7 +18,7 @@ ADRs que governam este épico:
 estado compartilhado), [0003](../../adr/0003-laco-autonomo-com-auto-cessao-e-teto.md)
 (laço com freio), [0004](../../adr/0004-codigo-propaga-invalidacao-agente-julga.md)
 (código propaga, agente julga),
-[0006](../../adr/0006-sqlite-com-checkpointer-langgraph.md) (persistência).
+[0009](../../adr/0009-postgres-como-banco-da-sessao.md) (persistência).
 
 ## Tarefas
 
@@ -38,3 +38,4 @@ estado compartilhado), [0003](../../adr/0003-laco-autonomo-com-auto-cessao-e-tet
   de ciclos autônomos, follow-up vencendo com relógio falso, tool call
   malformada e cenário inválido.
 - Reabrir a CLI com o mesmo id de sessão continua de onde parou.
+- `make test-db` passa com o Compose de pé, e `make test` segue offline.

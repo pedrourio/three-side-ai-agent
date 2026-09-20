@@ -53,12 +53,15 @@ autenticação, multiusuário, deploy fora do Compose, mais de um agente.
  │      │                       │        │ + fallback   │──▶ OpenRouter
  │      ▼                       │        └──────────────┘
  │ core/ (Python puro)          │
- │  grafo LangGraph, estado,    │
- │  tools, cenário              │
+ │  ciclo, estado, tools,       │
+ │  cenário                     │
  └──────────────┬───────────────┘
-                │ checkpointer
+                │ SessionStore
                 ▼
-          SQLite (volume)
+        ┌──────────────┐
+        │ postgres     │  sessions(id, state JSONB, updated_at)
+        │ (volume)     │
+        └──────────────┘
 ```
 
 Quatro peças no Docker Compose:
@@ -81,9 +84,12 @@ um nome lógico de modelo (`primary-agent`); qual provedor atende é YAML.
 **`web/`** (Nuxt 4) — três colunas de chat e uma de estado/trilha, alimentadas
 por um WebSocket só.
 
-**Persistência**: SQLite em volume, via checkpointer do LangGraph. Recarregar a
-página continua a sessão, e a trilha fica gravada para autópsia depois da demo.
-Sem Postgres, Redis ou Celery: a fila é `asyncio` e os timers são tasks
+**Persistência**: Postgres em container com volume, uma tabela
+`sessions(id, state JSONB, updated_at)` atrás do Protocol `SessionStore`
+([ADR 0009](../../adr/0009-postgres-como-banco-da-sessao.md)). Recarregar a
+página continua a sessão, e a trilha fica gravada — em `JSONB`, portanto
+consultável por SQL, que é o que torna barato analisar o comportamento do agente
+depois da demo. Sem Redis nem Celery: a fila é `asyncio` e os timers são tasks
 `asyncio` que enfileiram eventos. Se algum dia houver mais de um worker, a fila
 é o ponto de troca.
 
@@ -245,6 +251,11 @@ web nem o provedor, os testes injetam um **modelo falso** que devolve sequência
 roteirizada de tool calls. O teste vira determinístico e afirma sobre o que
 importa.
 
+Onde um store for necessário, o `make test` usa `InMemorySessionStore`. Os
+testes do SQL de verdade vivem em `make test-db`, marcados `-m db`, e exigem o
+Compose de pé — consequência aceita no
+[ADR 0009](../../adr/0009-postgres-como-banco-da-sessao.md).
+
 Cobertura obrigatória em `make test` (sem rede, sem chave de API, segundos):
 
 - propagação de invalidação (S2 confirma 14h, P pede 16h → confirmação de S2 cai
@@ -307,6 +318,7 @@ justifique.
 ├── web/                      # Nuxt 4
 ├── scenarios/appointment-scheduling.yaml
 └── litellm/config.yaml
+
 ```
 
 ## 11. Convenções
@@ -320,7 +332,8 @@ justifique.
   **documentação**: spec, ADRs e backlog.
 - Python gerenciado por `uv`; lint e format por `ruff`; fronteira de import por
   `import-linter`; tipos por Pydantic v2.
-- `Makefile` é a interface única: `up`, `down`, `test`, `lint`, `types`, `logs`.
+- `Makefile` é a interface única: `up`, `down`, `test`, `test-db`, `lint`,
+  `types`, `logs`, `ping`.
 - ADRs são imutáveis: ADR errado não se apaga, se supersede.
 
 ## 12. Processo de trabalho

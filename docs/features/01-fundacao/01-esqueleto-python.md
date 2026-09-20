@@ -74,8 +74,11 @@ select = ["E", "F", "I", "UP", "B"]
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 testpaths = ["tests"]
-markers = ["live: precisa de LLM real; fora do make test"]
-addopts = "-m 'not live'"
+markers = [
+    "live: precisa de LLM real; fora do make test",
+    "db: precisa de Postgres de pé; roda por make test-db",
+]
+addopts = "-m 'not live and not db'"
 ```
 
 - [ ] **Passo 2: criar os pacotes vazios e o `.gitignore`**
