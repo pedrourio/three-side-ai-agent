@@ -158,7 +158,7 @@ LITELLM_MASTER_KEY=sk-local-dev
 POSTGRES_USER=agent
 POSTGRES_PASSWORD=agent
 POSTGRES_DB=agent
-DATABASE_URL=postgresql://agent:agent@localhost:5432/agent
+DATABASE_URL=postgresql://agent:agent@localhost:5433/agent
 ```
 
 `compose.yaml`. Note o `DATABASE_URL` da `api` apontando para o host
@@ -174,7 +174,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
     ports:
-      - "5432:5432"
+      - "5433:5432"   # 5432 do host costuma estar com um Postgres local
     volumes:
       - agent-data:/var/lib/postgresql/data
     healthcheck:
@@ -274,7 +274,7 @@ make up
 docker compose ps               # postgres e litellm healthy, api up
 curl -s localhost:8000/health   # {"status":"ok"}
 make ping                       # pong + qual provedor atendeu
-psql "$DATABASE_URL" -c 'select 1'   # o banco aceita conexão de fora do Compose
+psql "$DATABASE_URL" -c 'select version()'   # o banco aceita conexão de fora
 ```
 
 Se o `ping` falhar, `make logs` mostra qual provedor recusou e por quê. Testar o
