@@ -13,7 +13,7 @@ deveria conhecer nenhum deles.
 ## Decisão
 
 Um container `litellm` no Compose, falando protocolo OpenAI-compatible. O `core`
-conhece apenas um `base_url` e um nome lógico de modelo (`agente-principal`).
+conhece apenas um `base_url` e um nome lógico de modelo (`primary-agent`).
 Provedores (Gemini, Groq, OpenRouter e outros) e a ordem de fallback vivem em
 `litellm/config.yaml`.
 

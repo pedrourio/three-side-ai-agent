@@ -16,7 +16,7 @@ o código, o agente deixa de ter o problema interessante para resolver.
 Dividir por natureza da tarefa:
 
 - **Contabilidade é do código.** Quando um fato muda de valor ou é invalidado,
-  todo fato que declara depender dele volta a `precisa_reconfirmar` e suas
+  todo fato que declara depender dele volta a `needs_reconfirmation` e suas
   confirmações caem. As dependências são declaradas no cenário.
 - **Julgamento é do agente.** Quem avisar primeiro, se cancela com S2 antes de
   oferecer alternativa a P, se negocia, se desiste.

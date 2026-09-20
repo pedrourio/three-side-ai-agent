@@ -76,7 +76,7 @@ entradas ordenadas, nunca dois ticks pisando no mesmo estado. Expõe um WebSocke
 por sessão e REST para criar/listar sessões e cenários.
 
 **`litellm`** — proxy OpenAI-compatible. O `core` conhece apenas um `base_url` e
-um nome lógico de modelo (`agente-principal`); qual provedor atende é YAML.
+um nome lógico de modelo (`primary-agent`); qual provedor atende é YAML.
 
 **`web/`** (Nuxt 4) — três colunas de chat e uma de estado/trilha, alimentadas
 por um WebSocket só.
@@ -95,11 +95,11 @@ Duas metades:
 
 - **Conversas** — histórico de mensagens por canal (`s1`, `s2`, `p`).
 - **Quadro de fatos** — representação estruturada do objetivo. Cada fato tem
-  `nome`, `valor`, `origem` (quem disse), `status` e `confirmado_por` (conjunto
-  de canais).
+  `name`, `value`, `source` (quem disse), `status` e `confirmed_by` (conjunto de
+  canais).
 
-Status possíveis de um fato: `proposto`, `confirmado`, `precisa_reconfirmar`,
-`invalidado`.
+Status possíveis de um fato: `proposed`, `confirmed`, `needs_reconfirmation`,
+`invalidated`.
 
 O quadro de fatos é o que o painel desenha e o que os testes afirmam.
 
@@ -107,15 +107,15 @@ O quadro de fatos é o que o painel desenha e o que os testes afirmam.
 
 | Tool | Efeito |
 |------|--------|
-| `enviar(canal, texto)` | emite mensagem para um dos três chats |
-| `registrar_fato(nome, valor, origem)` | cria/atualiza um fato como `proposto` |
-| `confirmar_fato(nome, canal)` | adiciona `canal` a `confirmado_por` |
-| `invalidar_fato(nome, motivo)` | marca `invalidado` e dispara propagação |
-| `agendar_followup(quando, motivo)` | cria timer que reacorda o agente |
-| `cancelar_followup(id)` | remove timer pendente |
-| `concluir(resultado)` | encerra a sessão com desfecho registrado |
+| `send(channel, text)` | emite mensagem para um dos três chats |
+| `record_fact(name, value, source)` | cria/atualiza um fato como `proposed` |
+| `confirm_fact(name, channel)` | adiciona `channel` a `confirmed_by` |
+| `invalidate_fact(name, reason)` | marca `invalidated` e dispara propagação |
+| `schedule_followup(when, reason)` | cria timer que reacorda o agente |
+| `cancel_followup(id)` | remove timer pendente |
+| `finish(outcome)` | encerra a sessão com desfecho registrado |
 
-Ao fim de cada ciclo o agente declara **continuar** ou **dormir**.
+Ao fim de cada ciclo o agente declara `continue` ou `sleep`.
 
 ### 5.3 O tick
 
@@ -130,7 +130,7 @@ estouro em vermelho. Agente em laço é bug a observar, não a esconder.
 ### 5.4 Conflito: código propaga, agente julga
 
 Quando um fato muda de valor ou é invalidado, o **código** propaga a mecânica:
-todo fato que declara dependência dele volta a `precisa_reconfirmar`, e as
+todo fato que declara dependência dele volta a `needs_reconfirmation`, e as
 confirmações caem. As dependências são declaradas no cenário.
 
 O **agente** decide o que fazer a respeito: quem avisar primeiro, se cancela com
@@ -159,46 +159,49 @@ fatos. A trilha é persistida junto do estado.
 Um YAML validado por Pydantic na carga — cenário quebrado falha ao subir, não no
 meio da demo.
 
+As **chaves** são em inglês; o **conteúdo** é o texto que vai para o prompt e
+que o desenvolvedor lê na tela, portanto em português.
+
 ```yaml
-id: agendamento-consulta
-nome: Agendamento de consulta
-objetivo: >
+id: appointment-scheduling
+name: Agendamento de consulta
+goal: >
   Agendar uma consulta para o colaborador indicado por S1, em horário que
   exista na agenda de S2 e que P aceite.
 
-canais:
+channels:
   - id: s1
-    rotulo: Secretária da empresa
-    papel: >
+    label: Secretária da empresa
+    role: >
       Solicita o agendamento. Sabe quem é o colaborador e qual a urgência.
       Não conhece a agenda da clínica.
   - id: s2
-    rotulo: Secretária da clínica
-    papel: >
+    label: Secretária da clínica
+    role: >
       Única que conhece e reserva horários na agenda. Não conhece o paciente.
   - id: p
-    rotulo: Paciente
-    papel: >
+    label: Paciente
+    role: >
       Aceita ou recusa o horário proposto. Pode ter restrições próprias.
 
-fatos:
-  - nome: colaborador
-    origem: [s1]
-    confirmacao: []
-  - nome: especialidade
-    origem: [s1]
-    confirmacao: [s2]
-  - nome: horario
-    origem: [s2]
-    confirmacao: [p, s1]
-    depende_de: [especialidade]
-  - nome: reserva
-    origem: [s2]
-    confirmacao: [s2]
-    depende_de: [horario]
+facts:
+  - name: employee
+    source: [s1]
+    confirmation: []
+  - name: specialty
+    source: [s1]
+    confirmation: [s2]
+  - name: slot
+    source: [s2]
+    confirmation: [p, s1]
+    depends_on: [specialty]
+  - name: booking
+    source: [s2]
+    confirmation: [s2]
+    depends_on: [slot]
 
 followup:
-  sem_resposta_minutos: 10
+  no_reply_minutes: 10
 ```
 
 A v1 entrega este cenário. Um segundo cenário de domínio distinto (negociação de
@@ -228,8 +231,8 @@ Em tela estreita, as quatro colunas viram abas.
 
 Um WebSocket por sessão, eventos tipados:
 
-- entrando: `mensagem_humana`
-- saindo: `mensagem_agente`, `fatos_alterados`, `ciclo`, `status`
+- entrando: `human_message`
+- saindo: `agent_message`, `facts_changed`, `cycle`, `status`
 
 Os tipos TypeScript são **gerados** a partir dos modelos Pydantic (JSON Schema →
 `json-schema-to-typescript`, via `make types`). O front nunca mantém uma cópia
@@ -245,7 +248,7 @@ importa.
 Cobertura obrigatória em `make test` (sem rede, sem chave de API, segundos):
 
 - propagação de invalidação (S2 confirma 14h, P pede 16h → confirmação de S2 cai
-  para `precisa_reconfirmar`);
+  para `needs_reconfirmation`);
 - teto de ciclos autônomos;
 - follow-up disparando no tempo, com relógio falso;
 - tool call malformada e o caminho de retry/aborto;
@@ -302,20 +305,19 @@ justifique.
 │   └── api/                  # main, session (fila+worker), ws, events
 ├── tests/
 ├── web/                      # Nuxt 4
-├── cenarios/agendamento-consulta.yaml
+├── scenarios/appointment-scheduling.yaml
 └── litellm/config.yaml
 ```
 
 ## 11. Convenções
 
-- **Idioma.** Identificadores de infraestrutura — nomes de arquivo, módulos,
-  classes, funções, variáveis — em inglês. Os **contratos do domínio** ficam em
-  português, porque o domínio inteiro é conversado em português: nomes de tools
-  do agente, valores de status de fato, chaves de cenário e nomes de evento do
-  WebSocket. Documentação, backlog e ADRs em português.
-  *Exemplo:* o módulo é `src/core/tools.py`, a função Python é
-  `def register_fact(...)`, e a tool exposta ao modelo se chama
-  `registrar_fato`.
+- **Idioma: todo o código em inglês, sem exceção.** Nomes de arquivo, módulos,
+  classes, funções, variáveis, nomes de tool expostos ao modelo, valores de
+  status, chaves de cenário, nomes de evento do WebSocket.
+  Em português ficam apenas duas coisas: o **texto que uma pessoa lê** — rótulos
+  e mensagens da interface, e as descrições de papel dentro dos cenários, que
+  são conteúdo de prompt para personas que conversam em português — e a
+  **documentação**: spec, ADRs e backlog.
 - Python gerenciado por `uv`; lint e format por `ruff`; fronteira de import por
   `import-linter`; tipos por Pydantic v2.
 - `Makefile` é a interface única: `up`, `down`, `test`, `lint`, `types`, `logs`.
