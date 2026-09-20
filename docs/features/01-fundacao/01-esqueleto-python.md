@@ -67,6 +67,9 @@ packages = ["src/core", "src/api"]
 [tool.ruff]
 line-length = 100
 src = ["src", "tests"]
+# ruff >= 0.16 formata blocos Python dentro de Markdown; sem isto, `make lint`
+# reprova os próprios arquivos deste backlog.
+extend-exclude = ["docs"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
@@ -145,6 +148,7 @@ Esperado: PASS.
 root_packages =
     core
     api
+include_external_packages = True
 
 [importlinter:contract:core-is-standalone]
 name = core não depende de api nem de framework web
@@ -183,18 +187,23 @@ lint:  ## estilo + fronteira de import
 
 - [ ] **Passo 8: provar que o contrato morde**
 
-Adicione temporariamente `import fastapi` no topo de `src/core/__init__.py`:
+Plante o import em `src/core/__init__.py` — **usando** o módulo, senão o `ruff`
+o reprova por F401 antes de o import-linter ser chamado:
+
+```python
+import fastapi
+
+app = fastapi.FastAPI()
+```
+
+Run: `uv run lint-imports`
+Esperado: FAIL com `core is not allowed to import fastapi`. O import-linter
+reporta a violação mesmo com o fastapi ainda não instalado.
+
+Esvazie o arquivo e rode de novo:
 
 Run: `make lint`
-Esperado: FAIL com `core is not allowed to import fastapi`. (A mensagem pode
-citar `fastapi` como módulo não instalado antes disso — instale-o como dev
-dependency temporária ou confie no contrato estático; o import-linter reporta a
-violação mesmo sem o pacote presente.)
-
-Remova o import e rode de novo:
-
-Run: `make lint`
-Esperado: PASS.
+Esperado: PASS, `Contracts: 1 kept, 0 broken`.
 
 - [ ] **Passo 9: commit**
 
