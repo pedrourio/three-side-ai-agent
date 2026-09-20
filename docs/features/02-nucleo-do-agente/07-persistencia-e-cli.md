@@ -10,33 +10,13 @@ contra um modelo real, fecha a CLI, reabre com o mesmo id de sessão e continua 
 onde parou — e consegue perguntar em SQL quais sessões estouraram o teto de
 ciclos.
 
-## Decisão pendente — resolva antes do passo 2
+## Nota sobre o LangGraph
 
-O [ADR 0009](../../adr/0009-postgres-como-banco-da-sessao.md) definiu Postgres
-com uma tabela atrás do Protocol `SessionStore`. Ao fazer isso, ele tirou do
-LangGraph a única função que lhe restava neste desenho: o checkpointer.
-
-O ciclo que saiu da tarefa 02-05 é um laço Python simples — sem nós, sem
-ramificação condicional, sem estado de grafo. Com a persistência resolvida por
-SQL direto, **o LangGraph deixa de ter papel algum no projeto**.
-
-**Não implemente antes de registrar um ADR.** Rode `/adr papel do LangGraph no
-projeto` e decida entre:
-
-- **A — Remover o LangGraph da stack.** Uma dependência grande a menos e nenhuma
-  indireção. Recomendado: nada no desenho atual o usa. Custo: se o agente um dia
-  virar orquestrador + sub-agentes (a alternativa descartada no
-  [ADR 0002](../../adr/0002-agente-unico-com-estado-compartilhado.md)), ele volta
-  a fazer sentido e a decisão se supersede.
-- **B — Manter e reescrever o ciclo como `StateGraph`.** Nós `think` → `act` →
-  `decide`, com aresta condicional voltando para `think` no `keep_working`, e
-  `PostgresSaver` no lugar do `SessionStore`. Só vale se o objetivo de
-  aprendizado do projeto incluir LangGraph explicitamente — o que é uma razão
-  legítima, mas precisa estar escrita no ADR, e não deduzida do silêncio.
-
-Os passos abaixo assumem **A**. Se o ADR escolher **B**, a tarefa vira reescrever
-`cycle.py` como grafo mantendo os catorze testes de 02-05 passando sem alteração
-— esse é o critério que prova que a troca foi de mecanismo, não de comportamento.
+O ciclo que saiu da 02-05 é um laço Python simples, e a persistência aqui é SQL
+direto: nada no desenho usa LangGraph. Se ele não entrar em nenhuma tarefa até
+aqui, tire-o da stack e siga — não vale um ADR. Se você quiser mantê-lo por
+aprendizado, o critério de que a troca foi de mecanismo e não de comportamento é
+os quinze testes de 02-05 passarem sem alteração.
 
 ## Arquivos
 
@@ -60,17 +40,7 @@ Os passos abaixo assumem **A**. Se o ADR escolher **B**, a tarefa vira reescreve
 
 ## Passos
 
-- [ ] **Passo 1: registrar o ADR da decisão acima**
-
-```
-/adr papel do LangGraph no projeto
-```
-
-Se a decisão for **A**, remova a dependência: `uv remove langgraph` (se já tiver
-sido adicionada em alguma tarefa anterior) e confira que nada em `src/` a
-importa.
-
-- [ ] **Passo 2: escrever os testes do store, que devem falhar**
+- [ ] **Passo 1: escrever os testes do store, que devem falhar**
 
 `tests/db/test_store.py`. Note o `pytestmark`: estes testes **não** rodam no
 `make test`; eles exigem o Compose de pé, por decisão do
@@ -165,7 +135,7 @@ def test_the_trail_is_queryable_as_jsonb(store):
     assert [row[0] for row in rows] == ["travada"]
 ```
 
-- [ ] **Passo 3: rodar e ver falhar**
+- [ ] **Passo 2: rodar e ver falhar**
 
 ```bash
 make up
@@ -174,7 +144,7 @@ uv run pytest -m db -v
 
 Esperado: FAIL — `ModuleNotFoundError: No module named 'core.store'`.
 
-- [ ] **Passo 4: implementar `src/core/store.py`**
+- [ ] **Passo 3: implementar `src/core/store.py`**
 
 Uma conexão por operação, sem pool: a escala é uma escrita por ciclo de agente, e
 pool aqui seria otimização sem medição.
@@ -242,7 +212,7 @@ class PostgresSessionStore:
 O import de `psycopg` fica dentro do método pelo mesmo motivo do `openai` em
 `llm.py`: importar `core` não deve abrir driver de banco.
 
-- [ ] **Passo 5: acrescentar o store em memória a `src/core/testing.py`**
+- [ ] **Passo 4: acrescentar o store em memória a `src/core/testing.py`**
 
 É ele que mantém o `make test` offline quando o épico 03 precisar de um store.
 
@@ -270,7 +240,7 @@ Guardar JSON em vez do objeto é de propósito: assim o dublê cobra o mesmo
 round-trip de serialização que o Postgres cobra, e um campo que não serializa
 quebra no `make test`, não só na demo.
 
-- [ ] **Passo 6: rodar e ver passar**
+- [ ] **Passo 5: rodar e ver passar**
 
 ```bash
 uv run pytest -m db -v
@@ -278,7 +248,7 @@ uv run pytest -m db -v
 
 Esperado: PASS, seis testes.
 
-- [ ] **Passo 7: acrescentar o alvo ao `Makefile`**
+- [ ] **Passo 6: acrescentar o alvo ao `Makefile`**
 
 ```makefile
 test-db:  ## testes que exigem Postgres; precisa de make up antes
@@ -292,7 +262,7 @@ Confirme que `make test` **não** roda os testes `db`:
 Run: `make test`
 Esperado: a contagem de testes não inclui os seis do store.
 
-- [ ] **Passo 8: implementar `src/core/cli.py`**
+- [ ] **Passo 7: implementar `src/core/cli.py`**
 
 A CLI não tem teste automatizado: é um cliente fino sobre peças já testadas, e
 testá-la seria testar `input()`. O que ela prova é outra coisa — que o núcleo
@@ -425,7 +395,7 @@ if __name__ == "__main__":
     main()
 ```
 
-- [ ] **Passo 9: conduzir uma sessão de verdade**
+- [ ] **Passo 8: conduzir uma sessão de verdade**
 
 ```bash
 make up
@@ -443,7 +413,7 @@ Conduza o roteiro que define o épico:
 7. `/trail` — a trilha deve explicar o que o agente fez e por quê
 8. `/quit`, reabra com o mesmo `--session demo`, e confirme que tudo voltou
 
-- [ ] **Passo 10: colher a primeira consulta analítica**
+- [ ] **Passo 9: colher a primeira consulta analítica**
 
 O que justifica o Postgres é poder perguntar isto:
 
@@ -457,7 +427,7 @@ psql "$DATABASE_URL" -c "
 "
 ```
 
-- [ ] **Passo 11: commit**
+- [ ] **Passo 10: commit**
 
 ```bash
 make test && make lint && make test-db
@@ -469,7 +439,6 @@ git commit -m "feat: persistência em Postgres e CLI de terminal para conduzir s
 
 - Os seis testes de `make test-db` passam com o Compose de pé.
 - `make test` continua offline, em segundos, e não inclui os testes `db`.
-- O roteiro do passo 9 roda inteiro contra um modelo gratuito real.
+- O roteiro do passo 8 roda inteiro contra um modelo gratuito real.
 - Reabrir a sessão restaura conversas, fatos, follow-ups e trilha.
-- A consulta do passo 10 responde.
-- Existe um ADR decidindo o papel do LangGraph, qualquer que seja a decisão.
+- A consulta do passo 9 responde.

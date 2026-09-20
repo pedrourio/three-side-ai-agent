@@ -17,6 +17,10 @@ Decisões que o sustentam: [`docs/adr/`](../adr/README.md).
 - Ordem dos passos dentro de uma tarefa: teste que falha → rodar e ver falhar →
   implementação mínima → rodar e ver passar → commit.
 
+Achados da revisão que não viraram correção nas tarefas estão em
+[NOTAS-DA-REVISAO.md](NOTAS-DA-REVISAO.md) — decisões suas, na hora que passar
+por cada arquivo.
+
 ## Ordem de execução
 
 | # | Épico / feature | Entrega |

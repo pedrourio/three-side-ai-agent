@@ -54,9 +54,16 @@ do seu propósito.
   - `SessionState(scenario_id, messages, facts, followups, autonomous_cycles, status, outcome, cycles)`
   - `build_messages(scenario, state, trigger, errors=()) -> list[dict]`
   - `MAX_AUTONOMOUS_CYCLES = 5`
-  - `Agent(scenario, model, clock=SystemClock(), max_autonomous_cycles=MAX_AUTONOMOUS_CYCLES)`
-    com `handle(state, trigger) -> SessionState` e
-    `start(...) -> SessionState` (estado inicial vazio do cenário)
+  - `Agent(scenario, model, clock=SystemClock(), max_autonomous_cycles=...,
+    on_cycle=None, should_stop=None)` com `handle(state, trigger) -> SessionState`
+    e `start() -> SessionState` (estado inicial vazio do cenário)
+
+`on_cycle(state, record)` e `should_stop()` são opcionais e existem por um motivo
+específico: sem eles, os cinco ciclos autônomos só aparecem na tela numa rajada
+no fim, e o "botão de parar o agente" do spec §7.1 não tem onde se pendurar.
+Custam seis linhas agora; depois, com o épico 03 em cima, custam reescrever o
+laço. `ModelPort` é **síncrono** e bloqueia por chamada — o épico 03 roda
+`await asyncio.to_thread(agent.handle, ...)`.
 
 ## Passos
 
@@ -95,6 +102,7 @@ class SessionStatus(StrEnum):
     STALLED = "stalled"
     FINISHED = "finished"
     ERROR = "error"
+    STOPPED = "stopped"  # parada manual; a tela distingue do teto estourado
 
 
 class Trigger(BaseModel):
@@ -276,7 +284,7 @@ def test_two_failures_abort_the_cycle_without_killing_the_session():
 
     assert len(model.calls) == 2
     assert state.status is SessionStatus.SLEEPING, "sessão continua viva"
-    assert len(state.cycles[0].errors) == 2
+    assert state.cycles[0].errors[-1].startswith("ciclo abortado")
 
 
 def test_calls_applied_before_an_error_are_kept():
@@ -330,6 +338,23 @@ def test_a_new_human_message_revives_a_session_in_error():
     state = engine.handle(state, human("s1", "e aí?"))
 
     assert state.status is SessionStatus.SLEEPING
+
+
+def test_the_hooks_let_the_caller_watch_and_stop():
+    seen = []
+    engine, _, _ = agent(*[reply(keep_working()) for _ in range(20)])
+    engine = Agent(
+        SCENARIO,
+        FakeModel([reply(send("s2"), keep_working()) for _ in range(20)]),
+        clock=FakeClock(datetime(2026, 1, 1, tzinfo=UTC)),
+        on_cycle=lambda state, record: seen.append(record.index),
+        should_stop=lambda: len(seen) >= 2,
+    )
+
+    state = engine.handle(engine.start(), human())
+
+    assert seen == [0, 1], "o chamador viu cada ciclo antes de handle retornar"
+    assert state.status is SessionStatus.STOPPED
 
 
 def test_the_trail_records_the_fact_diff():
@@ -501,12 +526,16 @@ class Agent:
         clock: Clock | None = None,
         max_autonomous_cycles: int = MAX_AUTONOMOUS_CYCLES,
         new_id: Callable[[], str] | None = None,
+        on_cycle: Callable[[SessionState, CycleRecord], None] | None = None,
+        should_stop: Callable[[], bool] | None = None,
     ) -> None:
         self._scenario = scenario
         self._model = model
         self._clock = clock or SystemClock()
         self._cap = max_autonomous_cycles
         self._new_id = new_id
+        self._on_cycle = on_cycle
+        self._should_stop = should_stop
 
     def start(self) -> SessionState:
         board = FactsBoard(self._scenario)
@@ -536,6 +565,10 @@ class Agent:
             if state.status in settled or not kept_working:
                 if state.status not in settled:
                     state.status = SessionStatus.SLEEPING
+                return state
+
+            if self._should_stop is not None and self._should_stop():
+                state.status = SessionStatus.STOPPED
                 return state
 
             if state.autonomous_cycles >= self._cap:
@@ -588,6 +621,8 @@ class Agent:
 
         record.kept_working = keep_working_reason is not None
         state.cycles.append(record)
+        if self._on_cycle is not None:
+            self._on_cycle(state, record)
         return keep_working_reason
 
     def _apply(self, call: ToolCall, board: FactsBoard) -> ToolResult:
@@ -620,7 +655,7 @@ class Agent:
 - [ ] **Passo 6: rodar e ver passar**
 
 Run: `uv run pytest tests/core/test_cycle.py -v`
-Esperado: PASS, catorze testes.
+Esperado: PASS, quinze testes.
 
 Se `test_the_cap_stops_a_runaway_agent` contar errado, revise a ordem: o ciclo
 disparado pelo humano não conta como autônomo; os cinco seguintes contam.
@@ -635,7 +670,7 @@ git commit -m "feat: ciclo do agente com laço autônomo, teto, recuperação de
 
 ## Pronto quando
 
-- Os catorze testes passam, offline.
+- Os quinze testes passam, offline.
 - `SessionState` faz round-trip por JSON sem perder nada — é pré-requisito da
   persistência (tarefa 02-07) e do WebSocket (épico 03).
 - Nenhum teste deste arquivo faz chamada de rede.

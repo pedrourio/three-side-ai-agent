@@ -200,11 +200,15 @@ from core.followups import auto_followup_id
 ```
 
 No começo de `handle`, ao registrar a mensagem humana, cancele a cobrança do
-canal que respondeu, e ao tratar um follow-up, consuma o que disparou:
+canal que respondeu, e ao tratar um follow-up, consuma o que disparou. **O patch
+é aditivo** — as duas linhas que repõem o status de erro vêm de 02-05 e
+continuam ali:
 
 ```python
         if trigger.kind == "human_message":
             state.autonomous_cycles = 0
+            if state.status is SessionStatus.ERROR:   # vem de 02-05, não apague
+                state.status = SessionStatus.SLEEPING
             channel = trigger.channel or ""
             state.followups = [f for f in state.followups if f.id != auto_followup_id(channel)]
             state.messages.append(
@@ -243,9 +247,8 @@ E acrescente o método:
 - [ ] **Passo 5: rodar e ver passar**
 
 Run: `uv run pytest tests/core/test_followups.py tests/core/test_cycle.py -v`
-Esperado: PASS. Os testes de 02-05 continuam passando; se algum quebrou por
-causa dos follow-ups automáticos, ajuste o teste, não o comportamento — a rede
-de segurança é o requisito.
+Esperado: PASS. **Os testes de 02-05 têm que continuar passando sem alteração** —
+se algum quebrou, o patch está errado, não o teste.
 
 - [ ] **Passo 6: commit**
 

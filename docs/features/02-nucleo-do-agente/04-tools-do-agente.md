@@ -98,13 +98,13 @@ def clock():
     return FakeClock(datetime(2026, 1, 1, 12, 0, tzinfo=UTC))
 
 
-def call(name, **arguments):
-    return ToolCall(name=name, arguments=arguments)
+def call(tool, **arguments):
+    return ToolCall(name=tool, arguments=arguments)
 
 
-def apply(name, board, clock, **arguments):
+def apply(tool, board, clock, **arguments):
     return apply_tool_call(
-        call(name, **arguments),
+        call(tool, **arguments),
         scenario=SCENARIO,
         board=board,
         clock=clock,

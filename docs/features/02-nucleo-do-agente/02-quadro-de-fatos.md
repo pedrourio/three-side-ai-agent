@@ -52,7 +52,11 @@ ordem, renegociar ou desistir — não é assunto deste arquivo; é do agente.
 4. Registrar valor **diferente** zera as confirmações do próprio fato e propaga
    aos dependentes.
 5. `invalidate` marca `INVALIDATED`, zera confirmações e propaga.
-6. Propagação é **transitiva** e atinge só fatos que já tinham valor.
+6. Propagação é **transitiva** e atinge só fatos que já tinham valor. Atenção:
+   "não mexer no status" e "não propagar adiante" são coisas diferentes — parar a
+   recursão num fato já `needs_reconfirmation` deixa um dependente `confirmed`
+   com a cadeia quebrada embaixo dele, que é exatamente o silêncio que o
+   [ADR 0004](../../adr/0004-codigo-propaga-invalidacao-agente-julga.md) proíbe.
 7. `record` de um canal fora de `source`, ou `confirm` de um canal fora de
    `confirmation`, levanta `FactError` — é erro de uso do agente, e o ciclo trata
    isso como tool call malformada (tarefa 02-04).
@@ -186,6 +190,22 @@ def test_propagation_skips_facts_that_never_had_a_value(board):
     assert {change.fact for change in changes} == {"specialty"}
     assert board.snapshot()["slot"].status is FactStatus.PROPOSED
     assert board.snapshot()["slot"].value is None
+
+
+def test_propagation_does_not_stop_at_an_already_broken_link(board):
+    """slot já está needs_reconfirmation; booking, confirmado depois, não pode ficar verde."""
+    board.record("specialty", "cardiologia", source="s1")
+    board.confirm("specialty", "s2")
+    board.record("slot", "14h", source="s2")
+    board.confirm("slot", "p")
+    board.confirm("slot", "s1")
+    board.record("specialty", "ortopedia", source="s1")  # quebra slot
+    board.record("booking", "#123", source="s2")
+    board.confirm("booking", "s2")
+
+    board.record("specialty", "neurologia", source="s1")
+
+    assert board.snapshot()["booking"].status is FactStatus.NEEDS_RECONFIRMATION
 
 
 def test_invalidate_drops_confirmations_and_propagates(board):
@@ -342,29 +362,37 @@ class FactsBoard:
         changes += self._cascade(name)
         return changes
 
-    def _cascade(self, name: str) -> list[FactChange]:
+    def _cascade(self, name: str, seen: set[str] | None = None) -> list[FactChange]:
+        seen = seen if seen is not None else {name}
         changes: list[FactChange] = []
+
         for dependent in self._scenario.dependents_of(name):
+            if dependent in seen:
+                continue
+            seen.add(dependent)
+
             before = self._facts[dependent]
-            if before.value is None:
-                continue
-            if before.status in (FactStatus.NEEDS_RECONFIRMATION, FactStatus.INVALIDATED):
-                continue
-
-            after = before.model_copy(deep=True)
-            after.status = FactStatus.NEEDS_RECONFIRMATION
-            after.confirmed_by = []
-            self._facts[dependent] = after
-
-            changes.append(
-                FactChange(
-                    fact=dependent,
-                    before=before,
-                    after=after,
-                    reason=f"depende de '{name}', que mudou",
-                )
+            untouched = before.value is None or before.status in (
+                FactStatus.NEEDS_RECONFIRMATION,
+                FactStatus.INVALIDATED,
             )
-            changes += self._cascade(dependent)
+            if not untouched:
+                after = before.model_copy(deep=True)
+                after.status = FactStatus.NEEDS_RECONFIRMATION
+                after.confirmed_by = []
+                self._facts[dependent] = after
+                changes.append(
+                    FactChange(
+                        fact=dependent,
+                        before=before,
+                        after=after,
+                        reason=f"depende de '{name}', que mudou",
+                    )
+                )
+
+            # sempre desce a cadeia, mesmo sem mexer neste nó
+            changes += self._cascade(dependent, seen)
+
         return changes
 
     def _spec(self, name: str):
