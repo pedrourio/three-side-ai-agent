@@ -15,4 +15,16 @@ lint:  ## estilo + fronteira de import
 	uv run ruff check .
 	uv run lint-imports
 
-.PHONY: help test fmt lint
+up:  ## sobe postgres, litellm e api
+	docker compose up -d --build
+
+down:  ## derruba tudo
+	docker compose down
+
+logs:  ## acompanha os logs
+	docker compose logs -f
+
+ping:  ## confere que o proxy responde com um modelo real
+	uv run python scripts/ping_model.py
+
+.PHONY: help test fmt lint up down logs ping

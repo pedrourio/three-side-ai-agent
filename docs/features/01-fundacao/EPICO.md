@@ -25,6 +25,6 @@ qualquer uma das duas depois custa caro.
 
 - `make test` roda em segundos, sem rede e sem chave de API, e passa.
 - `make lint` falha se alguém importar `fastapi` dentro de `src/core/`.
-- `make up` sobe `api` e `litellm`; `make ping` obtém uma resposta de um modelo
-  gratuito real através do proxy.
+- `make up` sobe `postgres`, `litellm` e `api`; `make ping` obtém uma resposta de
+  um modelo gratuito real através do proxy.
 - `CLAUDE.md` e `.claude/` commitados; `/adr` cria ADR numerado.

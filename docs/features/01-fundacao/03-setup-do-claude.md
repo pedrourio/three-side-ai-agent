@@ -85,7 +85,10 @@ Backlog: @docs/features/README.md
 
 ```bash
 #!/usr/bin/env bash
-# Formata e corrige o arquivo Python que acabou de ser editado.
+# Formata o arquivo Python que acabou de ser editado e ordena os imports.
+#
+# Só `--select I` de propósito: `ruff check --fix` completo apagaria um import
+# ainda não usado, e numa edição incremental o uso chega no passo seguinte.
 set -euo pipefail
 
 file=$(python3 -c 'import json,sys; print(json.load(sys.stdin).get("tool_input",{}).get("file_path",""))')
@@ -95,7 +98,7 @@ file=$(python3 -c 'import json,sys; print(json.load(sys.stdin).get("tool_input",
 
 cd "${CLAUDE_PROJECT_DIR:-.}"
 uv run ruff format "$file" >/dev/null 2>&1 || true
-uv run ruff check --fix "$file" >/dev/null 2>&1 || true
+uv run ruff check --select I --fix "$file" >/dev/null 2>&1 || true
 ```
 
 ```bash
@@ -223,7 +226,7 @@ git commit -m "chore: setup versionável do Claude com hook de formatação e co
 
 ## Pronto quando
 
-- `CLAUDE.md` cabe em uma tela e meia e não repete o que está no spec.
+- `wc -l CLAUDE.md` fica abaixo de 60 e não repete o que está no spec.
 - Editar um `.py` pelo Claude dispara `ruff format` automaticamente.
 - `/adr <título>` cria o próximo número correto e atualiza o índice.
 - `/tarefa <caminho>` carrega tarefa + ADRs + restrições globais.
